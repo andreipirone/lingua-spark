@@ -1,2 +1,8 @@
-pyside6
-genanki
+PySide6>=6.5
+genanki>=0.13
+pydantic>=2.0
+openai>=1.30
+anthropic>=0.30
+google-genai>=1.0
+requests>=2.31
+piper-tts>=1.0
