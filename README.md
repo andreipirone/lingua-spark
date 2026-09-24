@@ -10,11 +10,11 @@ standard `.apkg` file ready for Anki, AnkiMobile, or AnkiWeb.
 <table align="center">
   <tr>
     <td align="center">
-      <strong>Dark Mode</strong><br>
+      <strong>Light Mode</strong><br>
         <img src="docs/img2.png" width="400">
     </td>
     <td align="center">
-      <strong>Light Mode</strong><br>
+      <strong>Dark Mode</strong><br>
       <img src="docs/img1.png" width="400">
     </td>
   </tr>
