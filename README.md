@@ -105,19 +105,19 @@ For hosted Ollama models (no local install required):
 
 ## Card template
 
-Every card is generated from this 9-field schema:
-
-| Field               | Purpose                                                       |
-|---------------------|---------------------------------------------------------------|
-| Term                | The vocabulary word.                                          |
-| Translation         | Direct translation of the term into the **output language** (learner's language). The primary answer on the back. |
-| POS                 | Part of speech (noun, transitive verb, …).                    |
-| Phonetics           | IPA or native syllabary where applicable.                     |
-| Definition          | Concise, learner-friendly definition (secondary).             |
-| Example             | Native-level example sentence.                                |
-| Example Translation | Output-language translation of the example sentence.          |
-| Mnemonic            | High-retention visual or phonetic association.                |
-| Language            | Input language label (the language of the term + example).     |
+<table align="center">
+  <tr>
+    <td align="center">
+      <strong>Front of the card</strong><br>
+        <img src="docs/img3.png" width="400">
+    </td>
+    <td align="center">
+      <strong>Back of the card</strong><br>
+      <img src="docs/img4.png" width="400">
+    </td>
+  </tr>
+  <tr>
+</table>
 
 The card front shows the **term only**. The back reveals POS + language
 badges, phonetics, **direct translation in the output language** (the
@@ -126,17 +126,6 @@ translation, and a highlighted mnemonic callout. All back-of-card text
 is written in the output language you select; the term + example
 sentence are in the input language.
 
-### Card themes
-
-A **Deck Theme** dropdown lives in the action row, next to the Export
-button. The two options bake different CSS into the resulting `.apkg`
-— the layout and field set are identical, only the colors change.
-
-- **Light** (default) — white background, dark text.
-- **Dark** — navy background (`#0b1020`), light text. Matches the
-  LinguaSpark GUI's dark mode.
-
-Your choice is persisted in `QSettings` and restores on every launch.
 
 ### Voice pronunciation (experimental)
 
