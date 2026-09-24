@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import List, Optional
+import os
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGridLayout,
@@ -18,6 +21,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
+    QSpinBox,
+    QStyle,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +33,10 @@ from linguaspark.config import (
     DEFAULT_DECK_NAME,
     DEFAULT_INPUT_LANGUAGE,
     DEFAULT_OUTPUT_LANGUAGE,
+    DEFAULT_TTS_LENGTH_SCALE,
+    DEFAULT_TTS_NOISE_SCALE,
+    DEFAULT_TTS_NOISE_W,
+    DEFAULT_TTS_SPEAKER_ID,
     QSETTINGS_APP,
     QSETTINGS_ORG,
     SETTING_API_KEY_PREFIX,
@@ -36,6 +47,14 @@ from linguaspark.config import (
     SETTING_LAST_MODEL,
     SETTING_LAST_OUTPUT_LANGUAGE,
     SETTING_LAST_PROVIDER,
+    SETTING_TTS_CONFIG_PATH,
+    SETTING_TTS_ENABLED,
+    SETTING_TTS_LENGTH_SCALE,
+    SETTING_TTS_MODEL_PATH,
+    SETTING_TTS_NOISE_SCALE,
+    SETTING_TTS_NOISE_W,
+    SETTING_TTS_SPEAKER_ID,
+    SETTING_TTS_USE_DEFAULTS,
     SUPPORTED_LANGUAGES,
     SUPPORTED_PROVIDERS,
     api_key_setting_key,
@@ -172,6 +191,9 @@ class InputPanel(QWidget):
 
         self.provider_combo.currentIndexChanged.connect(self._refresh_provider_ui)
         self._refresh_provider_ui()
+
+        # --- Advanced / Piper TTS (experimental) ---
+        root.addWidget(self._build_advanced_group())
 
         # --- Action row ---
         actions = QHBoxLayout()
@@ -350,6 +372,272 @@ class InputPanel(QWidget):
     def set_export_enabled(self, enabled: bool) -> None:
         self.export_button.setEnabled(enabled)
 
+    # ------------------------------------------------------- advanced / TTS
+
+    def _build_advanced_group(self) -> QWidget:
+        """Build the Advanced dropdown that hosts experimental Piper TTS.
+
+        A ``QToolButton`` in checkable mode renders as a clickable header
+        with an arrow indicator; toggling it reveals or hides the
+        body widget holding all Piper TTS controls.
+        """
+        container = QWidget()
+        container.setObjectName("advancedDropdown")
+        v = QVBoxLayout(container)
+        v.setContentsMargins(0, 4, 0, 0)
+        v.setSpacing(0)
+
+        # --- Dropdown header (QToolButton) ---
+        self.advanced_toggle = QToolButton()
+        self.advanced_toggle.setObjectName("advancedToggle")
+        self.advanced_toggle.setText("Advanced  (Piper TTS — experimental)")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setChecked(False)
+        # Note: styling lives in styles.py under the `.advancedToggle` /
+        # `.advancedBody` QSS selectors so the active theme (light / dark)
+        # colors it appropriately. Do NOT set a hardcoded stylesheet here
+        # or it will override the global theme.
+        # Standard Qt arrow icon.
+        self.advanced_toggle.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown))
+        v.addWidget(self.advanced_toggle)
+
+        # --- Body (the actual TTS controls) ---
+        body = QWidget()
+        body.setObjectName("advancedBody")
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(12, 10, 12, 4)
+        body_layout.setSpacing(8)
+        v.addWidget(body)
+
+        # Start collapsed. The persistence step in ``_restore_settings``
+        # applies the user's last-known open/closed state. We connect the
+        # toggled handler *after* this initial setChecked(False) so the
+        # constructor doesn't write back a stale value to QSettings.
+        body.setVisible(False)
+        self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+
+        # Wire the handler now that the initial state is set.
+        # Save the body reference FIRST so the handler can use it.
+        self.advanced_body = body
+        self.advanced_toggle.toggled.connect(self._on_advanced_toggled)
+
+        warning = QLabel(
+            "⚠ Experimental: voice synthesis via Piper TTS. Requires a "
+            "downloaded Piper voice (.onnx + .onnx.json). Not all voices "
+            "render every text correctly. Audio files are embedded in the "
+            ".apkg and inflate its size."
+        )
+        warning.setWordWrap(True)
+        warning.setObjectName("ttsWarning")
+        warning.setStyleSheet(
+            "color: #92400e; background: #fffbeb; padding: 8px 10px; "
+            "border-left: 3px solid #f59e0b; border-radius: 4px;"
+        )
+        body_layout.addWidget(warning)
+
+        self.tts_enabled_checkbox = QCheckBox("Enable voice pronunciation")
+        self.tts_enabled_checkbox.setToolTip(
+            "Synthesise the term and example sentence with Piper and ship "
+            "them as audio inside the .apkg."
+        )
+        self.tts_enabled_checkbox.toggled.connect(self._refresh_tts_ui)
+        body_layout.addWidget(self.tts_enabled_checkbox)
+
+        # --- Model path picker ---
+        model_row = QHBoxLayout()
+        model_label = QLabel("Voice model (.onnx):")
+        self.tts_model_edit = QLineEdit()
+        self.tts_model_edit.setPlaceholderText(
+            "Select a Piper voice model — e.g. en_US-lessac-medium.onnx"
+        )
+        self.tts_model_edit.setReadOnly(True)
+        self.tts_model_browse = QPushButton("Browse…")
+        self.tts_model_browse.setObjectName("secondary")
+        self.tts_model_browse.clicked.connect(self._on_browse_tts_model)
+        model_row.addWidget(model_label)
+        model_row.addWidget(self.tts_model_edit, 1)
+        model_row.addWidget(self.tts_model_browse)
+        body_layout.addLayout(model_row)
+
+        # --- Params grid ---
+        params = QGridLayout()
+        params.setHorizontalSpacing(12)
+        params.setVerticalSpacing(6)
+
+        params.addWidget(QLabel("Speaker ID"), 0, 0)
+        self.tts_speaker_id = QSpinBox()
+        self.tts_speaker_id.setRange(0, 16)
+        self.tts_speaker_id.setValue(DEFAULT_TTS_SPEAKER_ID)
+        params.addWidget(self.tts_speaker_id, 0, 1)
+
+        params.addWidget(QLabel("Length scale"), 0, 2)
+        self.tts_length_scale = QDoubleSpinBox()
+        self.tts_length_scale.setRange(0.1, 4.0)
+        self.tts_length_scale.setSingleStep(0.05)
+        self.tts_length_scale.setValue(DEFAULT_TTS_LENGTH_SCALE)
+        params.addWidget(self.tts_length_scale, 0, 3)
+
+        params.addWidget(QLabel("Noise scale"), 1, 0)
+        self.tts_noise_scale = QDoubleSpinBox()
+        self.tts_noise_scale.setRange(0.0, 2.0)
+        self.tts_noise_scale.setSingleStep(0.05)
+        self.tts_noise_scale.setValue(DEFAULT_TTS_NOISE_SCALE)
+        params.addWidget(self.tts_noise_scale, 1, 1)
+
+        params.addWidget(QLabel("Noise W"), 1, 2)
+        self.tts_noise_w = QDoubleSpinBox()
+        self.tts_noise_w.setRange(0.0, 2.0)
+        self.tts_noise_w.setSingleStep(0.05)
+        self.tts_noise_w.setValue(DEFAULT_TTS_NOISE_W)
+        params.addWidget(self.tts_noise_w, 1, 3)
+        body_layout.addLayout(params)
+
+        # --- Voice defaults toggle (recommended) ---
+        self.tts_use_defaults_checkbox = QCheckBox(
+            "Use voice's recommended parameters"
+        )
+        self.tts_use_defaults_checkbox.setChecked(True)
+        self.tts_use_defaults_checkbox.setToolTip(
+            "When checked (recommended), Piper uses the length_scale / "
+            "noise_scale values that the voice was trained with — this "
+            "matches the audio from Piper's official samples and avoids "
+            "high-pitched or unnaturally fast output. Uncheck to manually "
+            "override the parameters above."
+        )
+        self.tts_use_defaults_checkbox.toggled.connect(self._refresh_tts_ui)
+        body_layout.addWidget(self.tts_use_defaults_checkbox)
+
+        # --- Test synthesize button ---
+        test_row = QHBoxLayout()
+        self.tts_test_button = QPushButton("▶ Test synthesize sample")
+        self.tts_test_button.setObjectName("secondary")
+        self.tts_test_button.clicked.connect(self._on_test_synthesize)
+        test_row.addWidget(self.tts_test_button)
+        test_row.addStretch(1)
+        body_layout.addLayout(test_row)
+
+        # ``body`` is set collapsed + the toggle handler is connected at the
+        # top of this method (after the initial setChecked(False)). The
+        # ``_restore_settings`` step will apply the user's last-known state.
+
+        self._refresh_tts_ui()
+        return container
+
+    def _on_advanced_toggled(self, checked: bool) -> None:
+        """Toggle body visibility + arrow icon, persist the choice."""
+        self.advanced_body.setVisible(checked)
+        # Make the dropdown behaviour obvious: down-arrow when expanded,
+        # right-arrow when collapsed.
+        self.advanced_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
+        self._settings.setValue("tts_advanced_open", checked)
+        self._settings.sync()
+
+    def _refresh_tts_ui(self) -> None:
+        enabled = self.tts_enabled_checkbox.isChecked()
+        self.tts_model_browse.setEnabled(enabled)
+        # Manual parameters are only relevant when voice defaults are off.
+        params_enabled = enabled and not self.tts_use_defaults_checkbox.isChecked()
+        self.tts_speaker_id.setEnabled(params_enabled)
+        self.tts_length_scale.setEnabled(params_enabled)
+        self.tts_noise_scale.setEnabled(params_enabled)
+        self.tts_noise_w.setEnabled(params_enabled)
+        self.tts_test_button.setEnabled(enabled)
+
+    def _on_browse_tts_model(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Piper voice model", "",
+            "Piper voice (*.onnx *.onnx.json);;All Files (*)",
+        )
+        if not path:
+            return
+        self.tts_model_edit.setText(path)
+
+    def _on_test_synthesize(self) -> None:
+        path = self._tts_resolved_paths()
+        if path is None:
+            QMessageBox.warning(
+                self, "Piper model",
+                "Select a Piper .onnx file (and the sibling .onnx.json "
+                "must exist) before testing.",
+            )
+            return
+        try:
+            from linguaspark.tts import PiperEngine
+            engine = PiperEngine(
+                onnx_path=path[0],
+                config_path=path[1],
+                speaker_id=self.tts_speaker_id.value(),
+                length_scale=self.tts_length_scale.value(),
+                noise_scale=self.tts_noise_scale.value(),
+                noise_w_scale=self.tts_noise_w.value(),
+            )
+            wav = engine.synth_wav_bytes("Hello, this is a LinguaSpark sample.")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Piper error", str(exc))
+            return
+        # Persist a temp file and open it with the OS default player.
+        import tempfile, subprocess, sys
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fp:
+            fp.write(wav)
+            tmp = fp.name
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", tmp])
+            elif sys.platform.startswith("win"):
+                os.startfile(tmp)  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", tmp])
+        except Exception:
+            QMessageBox.information(
+                self, "Sample synthesised",
+                f"Wrote sample to {tmp}. Open it with any audio player to hear it.",
+            )
+
+    # ---------------------------------------------------- TTS public accessors
+
+    def tts_enabled(self) -> bool:
+        return self.tts_enabled_checkbox.isChecked()
+
+    def tts_model_path(self) -> Optional[Path]:
+        text = self.tts_model_edit.text().strip()
+        return Path(text) if text else None
+
+    def tts_config_path(self, model: Optional[Path] = None) -> Optional[Path]:
+        """Return the resolved .onnx.json path. Auto-derives the sibling.
+
+        Looks at:
+        1. ``SETTING_TTS_CONFIG_PATH`` if explicitly saved.
+        2. ``<model>.onnx.json`` next to the model file.
+        """
+        stored = self._settings.value(SETTING_TTS_CONFIG_PATH, "", type=str).strip()
+        if stored:
+            p = Path(stored)
+            if p.is_file():
+                return p
+        candidate = (model or self.tts_model_path())
+        if candidate is None:
+            return None
+        sibling = candidate.with_suffix(candidate.suffix + ".json")
+        return sibling if sibling.is_file() else None
+
+    def _tts_resolved_paths(self) -> Optional[tuple[Path, Path]]:
+        model = self.tts_model_path()
+        config = self.tts_config_path(model)
+        if model is None or config is None:
+            return None
+        return model, config
+
+    def tts_parameters(self) -> dict:
+        return {
+            "use_voice_defaults": self.tts_use_defaults_checkbox.isChecked(),
+            "speaker_id": self.tts_speaker_id.value(),
+            "length_scale": self.tts_length_scale.value(),
+            "noise_scale": self.tts_noise_scale.value(),
+            "noise_w_scale": self.tts_noise_w.value(),
+        }
+
     def save_settings(self) -> None:
         self._settings.setValue(SETTING_LAST_DECK_NAME, self.deck_name_edit.text())
         self._settings.setValue(SETTING_LAST_INPUT_LANGUAGE, self.input_language())
@@ -361,6 +649,22 @@ class InputPanel(QWidget):
         if self.current_provider() == "ollama":
             self._settings.setValue("last_ollama_url", self.ollama_edit.text())
         self._settings.setValue(SETTING_DECK_THEME, self.deck_theme())
+        # TTS (experimental).
+        self._settings.setValue(SETTING_TTS_ENABLED, self.tts_enabled_checkbox.isChecked())
+        self._settings.setValue(SETTING_TTS_MODEL_PATH, self.tts_model_edit.text())
+        # Auto-derive sibling if present; only persist when both files exist.
+        model = self.tts_model_path()
+        config = self.tts_config_path(model) if model else None
+        if config is not None:
+            self._settings.setValue(SETTING_TTS_CONFIG_PATH, str(config))
+        self._settings.setValue(SETTING_TTS_SPEAKER_ID, self.tts_speaker_id.value())
+        self._settings.setValue(SETTING_TTS_LENGTH_SCALE, self.tts_length_scale.value())
+        self._settings.setValue(SETTING_TTS_NOISE_SCALE, self.tts_noise_scale.value())
+        self._settings.setValue(SETTING_TTS_NOISE_W, self.tts_noise_w.value())
+        self._settings.setValue(
+            SETTING_TTS_USE_DEFAULTS,
+            self.tts_use_defaults_checkbox.isChecked(),
+        )
         self._settings.sync()
 
     # --------------------------------------------------------------- internal
@@ -410,6 +714,52 @@ class InputPanel(QWidget):
         self.deck_theme_combo.blockSignals(True)
         self.deck_theme_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self.deck_theme_combo.blockSignals(False)
+
+        # Restore TTS state (experimental).
+        tts_enabled = self._settings.value(SETTING_TTS_ENABLED, False, type=bool)
+        tts_model = self._settings.value(SETTING_TTS_MODEL_PATH, "", type=str)
+        for w in (self.tts_enabled_checkbox, self.tts_speaker_id,
+                  self.tts_length_scale, self.tts_noise_scale, self.tts_noise_w,
+                  self.tts_use_defaults_checkbox):
+            w.blockSignals(True)
+        self.tts_enabled_checkbox.setChecked(bool(tts_enabled))
+        self.tts_model_edit.setText(tts_model)
+        self.tts_speaker_id.setValue(
+            int(self._settings.value(SETTING_TTS_SPEAKER_ID, DEFAULT_TTS_SPEAKER_ID, type=int))
+        )
+        self.tts_length_scale.setValue(
+            float(self._settings.value(SETTING_TTS_LENGTH_SCALE, DEFAULT_TTS_LENGTH_SCALE, type=float))
+        )
+        self.tts_noise_scale.setValue(
+            float(self._settings.value(SETTING_TTS_NOISE_SCALE, DEFAULT_TTS_NOISE_SCALE, type=float))
+        )
+        self.tts_noise_w.setValue(
+            float(self._settings.value(SETTING_TTS_NOISE_W, DEFAULT_TTS_NOISE_W, type=float))
+        )
+        # Default to True on first launch; honor explicit user choice later.
+        self.tts_use_defaults_checkbox.setChecked(
+            self._settings.value(SETTING_TTS_USE_DEFAULTS, True, type=bool)
+        )
+        for w in (self.tts_enabled_checkbox, self.tts_speaker_id,
+                  self.tts_length_scale, self.tts_noise_scale, self.tts_noise_w,
+                  self.tts_use_defaults_checkbox):
+            w.blockSignals(False)
+        self._refresh_tts_ui()
+
+        # Advanced dropdown expanded/collapsed state.
+        adv_open = self._settings.value("tts_advanced_open", False, type=bool)
+        # The new container is a plain QWidget with objectName="advancedDropdown"
+        # we set in _build_advanced_group; the body is captured as
+        # ``self.advanced_body`` and the toggle as ``self.advanced_toggle``.
+        # Use ``blockSignals(True)`` so the toggle handler doesn't write
+        # back what we just read.
+        self.advanced_toggle.blockSignals(True)
+        self.advanced_toggle.setChecked(bool(adv_open))
+        self.advanced_body.setVisible(bool(adv_open))
+        self.advanced_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if adv_open else Qt.ArrowType.RightArrow
+        )
+        self.advanced_toggle.blockSignals(False)
 
     def _on_process_clicked(self) -> None:
         words = self.words()

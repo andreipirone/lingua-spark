@@ -5,3 +5,4 @@ openai>=1.30
 anthropic>=0.30
 google-genai>=1.0
 requests>=2.31
+piper-tts>=1.0

@@ -1,11 +1,25 @@
 # LinguaSpark
 
+<img src="docs/logo.png" width="500">
+
 **LinguaSpark** is an AI-powered Anki deck builder for Python. Paste a plain
 list of words and a language model does the rest: definitions, phonetics,
 example sentences, translations, and memory mnemonics — packaged into a
 standard `.apkg` file ready for Anki, AnkiMobile, or AnkiWeb.
 
-![LinguaSpark workflow](docs/workflow.svg)
+<table align="center">
+  <tr>
+    <td align="center">
+      <strong>Dark Mode</strong><br>
+        <img src="docs/img2.png" width="400">
+    </td>
+    <td align="center">
+      <strong>Light Mode</strong><br>
+      <img src="docs/img1.png" width="400">
+    </td>
+  </tr>
+  <tr>
+</table>
 
 ## Features
 
@@ -124,30 +138,60 @@ button. The two options bake different CSS into the resulting `.apkg`
 
 Your choice is persisted in `QSettings` and restores on every launch.
 
-### Multi-word entries
+### Voice pronunciation (experimental)
 
-One vocabulary entry per line. Multi-word phrases such as
-`to evaluate`, `to be`, or `at once` stay intact on the same line —
-LinguaSpark splits only on newlines. Inline commas, semicolons, and pipes
-still split within a line (e.g. `apple, banana; cherry` becomes three
-entries).
+> ⚠️ **Experimental.** Voice synthesis is powered by [Piper TTS](https://github.com/OHF-Voice/piper1-gpl)
+> and depends on a user-supplied voice model. Not every model pronounces
+> every text correctly (numbers, code-switching, and rare characters
+> are common stumbling blocks). Audio files are embedded inside the
+> `.apkg`, so the file size grows roughly proportionally to the number
+> of cards (tens to hundreds of KB per card).
 
-## Project layout
+To enable voice pronunciation:
 
-```
-Anki-Deck-Generator/
-├── main.py                      # Entry point
-├── requirements.txt
-├── README.md
-└── linguaspark/
-    ├── config.py                # Constants, deck/model IDs, defaults
-    ├── models/card.py           # Pydantic VocabCard + BatchResponse
-    ├── llm/                     # OpenAI / Anthropic / Gemini / Ollama providers
-    ├── anki/                    # genanki builder + HTML/CSS templates
-    ├── workers/enrich_worker.py # QThread background enrichment
-    ├── ui/                      # InputPanel, ReviewTable, MainWindow
-    └── utils/parsers.py         # Word-list parsing + chunking
-```
+1. **Install Piper** (it's already a dependency in `requirements.txt`):
+   ```bash
+   pip install piper-tts
+   ```
+   On Windows you also need the Microsoft Visual C++ Redistributable.
+
+2. **Download a voice** from the
+   [piper-voices catalog](https://huggingface.co/rhasspy/piper-voices).
+   Each voice is a pair of files: `<voice>.onnx` + `<voice>.onnx.json`.
+   Put both in the same folder on your machine.
+
+3. **In LinguaSpark**, open the *Advanced* section at the bottom of the
+   input panel, tick **Enable voice pronunciation**, then click
+   *Browse…* and select the `.onnx` file. LinguaSpark auto-discovers the
+   sibling `.onnx.json`. Use *Test synthesize sample* to hear a sanity
+   check immediately.
+
+4. **Adjust parameters** (all optional):
+   - **Speaker ID** — multi-speaker models offer several voices; 0 is the first.
+   - **Length scale** — speech rate; 1.0 is normal, > 1.0 is slower.
+   - **Noise scale / Noise W** — variation in prosody (0 = robotic, higher = more varied).
+
+5. Click **Export to Anki**. Per-card synthesis runs during export and
+   the resulting `.apkg` carries each term + example sentence as
+   audio inside the deck.
+
+**What gets spoken.** LinguaSpark records the term in the **input
+language** (so learning French words is heard in French) plus the
+example sentence in the same language. Output-language audio (e.g.
+translations read aloud in English) is **not** generated — only one
+uploaded voice is supported per export.
+
+**Troubleshooting.**
+
+- *Piper fails to load* — make sure the `.onnx.json` file lives next to the
+  `.onnx`. The repo [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices)
+  ships them as a pair.
+- *Some cards have no audio in the .apkg* — the export will still succeed
+  with a warning such as `audio for 47/50 cards`. Re-export after
+  fixing the offending text or voice.
+- *Synthesis is slow* — Piper runs on CPU by default (~1–3 s per
+  card on a typical laptop). A CUDA build (`pip install onnxruntime-gpu`
+  + `use_cuda=True`) is significantly faster but optional.
 
 ## Troubleshooting
 
@@ -163,6 +207,9 @@ Anki-Deck-Generator/
 - **JSON parse error from the LLM** — LinguaSpark retries once with a
   corrective message. If a word still fails it shows up as a row with a
   red error message; right-click → regenerate to retry.
+- **"Piper voice missing" / "Piper load failed"** — enable voice
+  pronunciation only after pointing the Advanced section at a valid
+  `.onnx` file whose sibling `.onnx.json` lives next to it.
 - **Export produces an empty deck** — your review table is empty; process
   some words first.
 

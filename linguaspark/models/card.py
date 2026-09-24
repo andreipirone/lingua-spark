@@ -72,6 +72,25 @@ class VocabCard(BaseModel):
             "supplied word + example sentence)."
         ),
     )
+    # The next two are populated client-side (by the TTS engine at export time).
+    # The LLM never fills them; genanki only needs the basename of the audio file.
+    audio_term: str = Field(
+        default="",
+        description=(
+            "Client-side field. Holds the rendered audio HTML fragment "
+            "(<audio> + clickable 🔊 button) for the term — produced at "
+            "export time by the TTS engine. Empty when TTS is disabled or "
+            "synthesis failed."
+        ),
+    )
+    audio_example: str = Field(
+        default="",
+        description=(
+            "Client-side field. Holds the rendered audio HTML fragment for "
+            "the example sentence — produced at export time. Empty when TTS "
+            "is disabled or synthesis failed."
+        ),
+    )
 
     def to_anki_fields(self) -> List[str]:
         """Return fields in the order expected by the Anki model template."""
@@ -85,6 +104,8 @@ class VocabCard(BaseModel):
             self.translation,
             self.mnemonic,
             self.language,
+            self.audio_term,
+            self.audio_example,
         ]
 
     @classmethod
@@ -99,6 +120,8 @@ class VocabCard(BaseModel):
             "Example Translation",
             "Mnemonic",
             "Language",
+            "AudioTerm",
+            "AudioExample",
         ]
 
 

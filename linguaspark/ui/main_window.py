@@ -274,8 +274,41 @@ class MainWindow(QMainWindow):
                                     "Add some enriched cards first.")
             return
 
-        # Use whatever the visible "Dark deck theme" checkbox shows right now.
+        # Use whatever the visible "Deck Theme" dropdown shows right now.
         theme: CardTheme = self.input_panel.deck_theme()  # "light" or "dark"
+
+        # Resolve TTS engine (if enabled). Optional but experimental.
+        tts_engine = None
+        tts_failed = 0
+        if self.input_panel.tts_enabled():
+            paths = self.input_panel._tts_resolved_paths()
+            if paths is None:
+                QMessageBox.warning(
+                    self, "Piper voice missing",
+                    "Voice pronunciation is enabled but no Piper .onnx model "
+                    "is selected (or the sibling .onnx.json is missing).\n\n"
+                    "Either pick a model in the Advanced section or disable "
+                    "voice pronunciation.",
+                )
+                return
+            params = self.input_panel.tts_parameters()
+            try:
+                # Use attribute access rather than `from … import` so test
+                # doubles (and live upgrades) reach the latest binding.
+                from linguaspark import tts as _tts_pkg
+                PiperEngine = _tts_pkg.PiperEngine
+                tts_engine = PiperEngine(
+                    onnx_path=paths[0],
+                    config_path=paths[1],
+                    **params,
+                )
+            except Exception as exc:  # noqa: BLE001
+                QMessageBox.critical(
+                    self, "Piper load failed",
+                    f"Could not load the Piper voice model:\n\n{exc}\n\n"
+                    "Export will continue without audio.",
+                )
+                tts_engine = None
 
         # Choose where to write the .apkg.
         default_name = f"{self.input_panel.deck_name().replace(' ', '_')}.apkg"
@@ -288,18 +321,60 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".apkg"):
             path += ".apkg"
 
+        # Drive a progress bar while TTS renders (otherwise the bar is unchanged).
+        if tts_engine is not None:
+            self._progress_bar.setRange(0, max(len(cards), 1))
+            self._progress_bar.setValue(0)
+            self._status_label.setText(
+                f"Synthesising audio for {len(cards)} card{'s' if len(cards) != 1 else ''}…"
+            )
+            QApplication.processEvents()
+
+            def _on_progress(done: int, total: int) -> None:
+                self._progress_bar.setRange(0, max(total, 1))
+                self._progress_bar.setValue(done)
+                QApplication.processEvents()
+
+            def _on_export(export_path):
+                # Capture for use after build_apkg (closure into local scope below).
+                pass
+
+        progress_cb = _on_progress if tts_engine is not None else None
+
         try:
-            out = build_apkg(self.input_panel.deck_name(), cards, path, theme=theme)
+            out = build_apkg(
+                self.input_panel.deck_name(),
+                cards,
+                path,
+                theme=theme,
+                tts_engine=tts_engine,
+                progress=progress_cb,
+            )
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Export failed", str(exc))
             return
 
+        # Count how many cards ended up without audio (capped to cards where
+        # synthesis failed) so we can surface a non-blocking warning.
+        if tts_engine is not None:
+            produced = sum(1 for c in cards if c.audio_term or c.audio_example)
+            missing = len(cards) - produced
+
+        suffix = ""
+        if tts_engine is not None:
+            produced = sum(1 for c in cards if c.audio_term or c.audio_example)
+            if produced < len(cards):
+                suffix = f" — audio for {produced}/{len(cards)} cards"
+            else:
+                suffix = f" — audio embedded for {produced} cards"
+
         self._status_label.setText(
-            f"Exported {len(cards)} cards ({theme} theme) to {out}"
+            f"Exported {len(cards)} cards ({theme} theme) to {out}{suffix}"
         )
+        self._progress_bar.setValue(self._progress_bar.maximum())
         QMessageBox.information(
             self, "Export complete",
-            f"Wrote {len(cards)} cards ({theme} theme) to:\n{out}",
+            f"Wrote {len(cards)} cards ({theme} theme) to:\n{out}{suffix}",
         )
 
     def _show_about(self) -> None:

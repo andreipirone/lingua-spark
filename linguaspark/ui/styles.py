@@ -270,6 +270,40 @@ QPushButton#small {{
   font-size: 12px;
 }}
 
+# --- Advanced / Piper TTS dropdown ---
+.advancedToggle {{
+  background: {surface};
+  color: {text};
+  border: 1px solid {border};
+  border-radius: 6px;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+}}
+
+.advancedToggle:hover {{
+  background: {surface_alt};
+  border-color: {border_strong};
+}}
+
+.advancedToggle:checked {{
+  background: {surface_alt};
+  color: {primary};
+  border-color: {primary};
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}}
+
+.advancedToggle::menu-indicator {{ image: none; }}
+
+.advancedBody {{
+  background: {surface_alt};
+  border: 1px solid {border};
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 4px;
+}}
+
 QTableWidget {{
   background: {surface};
   alternate-background-color: {surface_alt};

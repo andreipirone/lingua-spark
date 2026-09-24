@@ -139,6 +139,48 @@ _LIGHT_CSS = """
   content: '💡 ';
 }
 
+.term-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 24px 0 8px 0;
+}
+
+.term-row .term {
+  margin: 0;
+}
+
+.example-sentence-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.example-sentence-row .example-sentence {
+  flex: 1;
+  margin: 0;
+}
+
+.audio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+
+.audio-btn:hover { background: #c7d2fe; }
+.audio-btn:active { background: #a5b4fc; }
+.audio-btn:focus { outline: 2px solid #6366f1; outline-offset: 2px; }
+
 hr {
   border: none;
   border-top: 1px solid #e5e7eb;
@@ -265,6 +307,48 @@ _DARK_CSS = """
   content: '💡 ';
 }
 
+.term-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 24px 0 8px 0;
+}
+
+.term-row .term {
+  margin: 0;
+}
+
+.example-sentence-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.example-sentence-row .example-sentence {
+  flex: 1;
+  margin: 0;
+}
+
+.audio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: #2a3358;
+  color: #b3c0ff;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+
+.audio-btn:hover { background: #353f6e; }
+.audio-btn:active { background: #404a82; }
+.audio-btn:focus { outline: 2px solid #7c8cff; outline-offset: 2px; }
+
 hr {
   border: none;
   border-top: 1px solid #283149;
@@ -281,7 +365,10 @@ _CSS_BY_THEME: dict[str, str] = {
 
 QUESTION_FORMAT = (
     '<div class="card">'
+    '<div class="term-row">'
     '<div class="term">{{Term}}</div>'
+    "{{AudioTerm}}"
+    "</div>"
     "</div>"
 )
 
@@ -301,7 +388,10 @@ ANSWER_FORMAT = (
     "</div>"
     '<div class="section">'
     '<div class="section-label">Example</div>'
+    '<div class="example-sentence-row">'
     '<p class="example-sentence">{{Example}}</p>'
+    "{{AudioExample}}"
+    "</div>"
     '<div class="example-translation">{{Example Translation}}</div>'
     "</div>"
     '<div class="section">'

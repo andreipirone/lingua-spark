@@ -61,6 +61,21 @@ SETTING_LAST_DECK_NAME = "last_deck_name"
 SETTING_DARK_MODE = "dark_mode"
 # Default theme for newly generated .apkg decks ("light" or "dark").
 SETTING_DECK_THEME = "deck_theme"
+# Piper TTS (experimental).
+SETTING_TTS_ENABLED = "tts_enabled"
+SETTING_TTS_MODEL_PATH = "tts_model_path"
+SETTING_TTS_CONFIG_PATH = "tts_config_path"
+SETTING_TTS_SPEAKER_ID = "tts_speaker_id"
+SETTING_TTS_LENGTH_SCALE = "tts_length_scale"
+SETTING_TTS_NOISE_SCALE = "tts_noise_scale"
+SETTING_TTS_NOISE_W = "tts_noise_w"
+SETTING_TTS_USE_DEFAULTS = "tts_use_defaults"
+
+# TTS defaults (Piper's recommended values).
+DEFAULT_TTS_SPEAKER_ID = 0
+DEFAULT_TTS_LENGTH_SCALE = 1.0
+DEFAULT_TTS_NOISE_SCALE = 0.667
+DEFAULT_TTS_NOISE_W = 0.8
 
 
 def api_key_setting_key(provider: str) -> str:
